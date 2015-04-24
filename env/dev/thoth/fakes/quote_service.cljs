@@ -3,7 +3,8 @@
   (:require [cljs.core.async :refer [chan close! <! put! timeout]]
             [cljs-time.core :as t]
             [thoth.services.quotes :refer [QuoteService]]
-            [thoth.fakes.quotes.thread-protector :refer [thread-protector-quote]]))
+            [thoth.fakes.quotes.thread-protector :refer [thread-protector-quote]]
+            [thoth.fakes.quotes.lock-plate :refer [lock-plate-quote]]))
 
 (defn get-quote-for [quotes {:keys [id] :as req}]
   (if-let [q (get quotes id)]
@@ -20,7 +21,8 @@
     c))
 
 (defn fake-quote-service []
-  (let [quotes {"100105001R03" thread-protector-quote}]
+  (let [quotes {"100105001R03" thread-protector-quote
+                "100101042R01" lock-plate-quote}]
     (reify
       QuoteService
       (request-quote-for-part [_ part-no]

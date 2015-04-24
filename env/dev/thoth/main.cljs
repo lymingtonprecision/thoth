@@ -10,6 +10,10 @@
                    :customer-part "D5303"
                    :customer-issue "AD"
                    :description "THREAD PROTECTOR, PD900RSD COLLAR, HARDFACED"}
+                  {:id "100101042R01"
+                   :customer-part "D5041"
+                   :customer-issue "AB"
+                   :description "LOCK PLATE 12.5 DEG M8 FERRY CAP SCREWS"}
                   {:id "100113301R07"
                    :customer-part "100769844"
                    :customer-issue "AM"
