@@ -13,7 +13,6 @@
 (defn routes [dev-mode?]
   (compojure/routes
     (resources "/")
-    (resources "/react" {:root "react"})
     (GET "/*" req (app-page dev-mode?))))
 
 (def dev-routes (routes true))
