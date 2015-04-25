@@ -24,39 +24,54 @@
 
 (defn create-sparse-quote-for-part
   "Returns a sparsely populated (lacking the actual quote data) quote
-  map.
+  map. The returned quote will have a `:status` of `:retrieving`.
 
   As much as the quote data will be missing an asynchronous request for
   the data will be submitted to `quote-service` with the results channel
-  of the request stored under the quotes `:updates` key."
+  of the request stored under the quotes `:details` key."
   [quote-service part]
   (let [id (generate-id)
         data-chan (request-quote-for-part quote-service (:id part))]
     {:id id
      :part part
      :created (t/now)
-     :data nil
-     :updates data-chan
-     :error nil
-     :history []}))
+     :status :retrieving
+     :details data-chan}))
+
+(defn create-full-quote
+  "Given a sparse quote and quote data returns a fully populated version
+  of the quote with a status of `:created`."
+  [sparse-quote data]
+  (assoc (select-keys sparse-quote [:id :part :created])
+         :status :created
+         :data data
+         :history []))
+
+(defn create-errored-quote
+  "Given a sparse quote and a retrieval error returns a version of the
+  quote containing the error details with a `:status` of
+  `:retrieval-failed`."
+  [sparse-quote error]
+  (assoc (select-keys sparse-quote [:id :part :created])
+         :status :retrieval-failed
+         :error error))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data processing
 
 (defn update-quote-on-data-receipt!
-  "Creates a `go` block waiting for the results on a quotes `:updates`
+  "Creates a `go` block waiting for the results on a quotes `:details`
   channel, updating the quote data when the results arrive."
   [cursor quote-id]
-  (let [data-chan (-> cursor om/state deref (get-in [:quotes quote-id :updates]))]
+  (let [data-chan (-> cursor om/state deref (get-in [:quotes quote-id :details]))]
     (go (if-let [r (<! data-chan)]
-          (let [[data error] (if (= :ok (first r))
-                               [(second r) nil]
-                               [nil (second r)])]
-            (om/transact!
-              cursor
-              [:quotes quote-id]
-              (fn [q]
-                (assoc q :data data :error error :updates nil))))))))
+          (om/transact!
+            cursor
+            [:quotes quote-id]
+            (fn [q]
+              (if (= :ok (first r))
+                (create-full-quote q (second r))
+                (create-errored-quote q (second r)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public

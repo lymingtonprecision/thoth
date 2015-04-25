@@ -1,19 +1,73 @@
 (ns thoth.components.quote.view
-  (:require-macros [cljs.core.async.macros :refer [go-loop]])
-  (:require [cljs.core.async :refer [chan <!]]
+  (:require-macros [cljs.core.async.macros :refer [go]])
+  (:require [clojure.data :refer [diff]]
+            [cljs.core.async :refer [close! <!]]
             [om.core :as om :include-macros true]
-            [om-tools.core :refer-macros [defcomponent]]
+            [om-tools.core :refer-macros [defcomponentmethod]]
             [om-tools.dom :as dom :include-macros true]
-            [thoth.routes :refer [defroute]]))
+            [thoth.routes :refer [defroute]]
+            [thoth.services.quotes :refer [request-updated-end-dates]]))
 
-(defcomponent quote-view [q owner]
+(defn set-latest-from-update [owner update]
+  (let [data-key (if (= :ok (first update)) :latest :error)
+        new-state {data-key (second update) :update nil}]
+    (om/update-state! owner #(merge % new-state))))
+
+(defn update-from-latest
+  "Updates quote `q` from the `:latest` data present in `owner`,
+  swapping the `:data` and recording a `:history` entry."
+  [owner q]
+  (if-let [latest (om/get-state owner :latest)]
+    (do
+      (om/set-state! owner :latest nil)
+      (om/transact! q (fn [q]
+                        (let [d (diff (:data q) latest)
+                              h (conj (:history q) d)]
+                          (assoc q :data latest :history h)))))))
+
+(defmulti quote-view (fn [q owner] (:status q)))
+
+(defcomponentmethod quote-view :created
+  [{:keys [id part data history] :as q} owner]
+  (init-state
+    [_]
+    {:latest nil
+     :error nil
+     :update nil})
+  (will-receive-props
+    #_"Make a request for new end dates whenever the quote data changes."
+    [_ {:keys [new-data]}]
+    (let [qs (om/get-shared owner :quote-service)
+          ou (om/get-state owner :update)
+          nu (request-updated-end-dates qs new-data)]
+      (when ou (close! ou))
+      (om/set-state! owner :update nu)
+      (go (if-let [r (<! nu)] (set-latest-from-update owner r)))))
+  (render-state
+    #_"Display header with current best end date (from `data`),
+      latest best end date based on changes (from `latest`),
+      a \"spinner\" or other \"working\" indicator if `update` isn't nil,
+      and a button to \"commit\" the changes which calls
+      `update-from-latest`.
+
+      Display quote body based on `data` any edits, sourcing, change to
+      method, etc. should apply to `data` and so that the
+      `will-receive-props` `fn` is called."
+    [_ {:keys [latest update error]}]
+    (dom/div (dom/p (str "Viewing quote " (:id q)))
+             (dom/code (pr-str (:data q))))))
+
+(defcomponentmethod quote-view :retrieving
+  [q owner]
   (render
     [_]
-    (dom/div
-      (if (and (nil? (:data q)) (:updates q))
-        (dom/p "Waiting ... waiting ... waiting ...")
-        [(dom/p (str "Viewing quote " (:id q)))
-         (dom/code (pr-str (:data q)))]))))
+    (dom/p "Waiting ... waiting ... waiting ...")))
+
+(defcomponentmethod quote-view :retrieval-failed
+  [q owner]
+  (render
+    [_]
+    (dom/p (str "Failed to retrieve quote for " (-> q :part :id)))))
 
 (defroute
   :quote ["quotes/" :id]
@@ -23,43 +77,3 @@
       (fn [s]
         (assoc s :page-fn #(let [q (-> % :quotes (get id))]
                              (om/build quote-view q)))))))
-
-(comment
-  (defcomponent quote-view [{:keys [id data dirty? history] :as q} owner]
-    (init-state
-      [_]
-      {:latest nil
-       :requests 0
-       :updates (chan)})
-    (will-mount
-      "Create a `go` block on our `:updates` channel to update our
-      `:latest` state with the received updates and decrement our
-      `:requests` counter."
-      [this]
-      (go-loop
-        []
-        (if-let [u (<! (om/get-state owner :updates))]
-          (om/update-state! owner :requests #(max 0 (dec %)))
-          (if (= :ok (first u))
-            (om/set-state! owner :latest (second u))
-            (om/set-state! owner :error (rest u))))))
-    (will-receive-props
-      "Make a request for new end dates whenever the quote data changes
-      without being clean."
-      [_ {:keys [id data dirty?]}]
-      (if dirty?
-        (let [qs (om/get-shared owner :quote-service)]
-          (quotes/request-updated-end-dates qs data (om/get-state owner :updates))
-          (om/update-state! owner :requests inc))))
-    (render-state
-      "Display header with current best end date (from `data`),
-      latest best end date based on changes (from `latest`),
-      a \"spinner\" or other \"working\" indicator if `(> requests 0)`,
-      and a button to \"commit\" the changes which replaces `data`
-      with `latest` and records a suitable `history` entry.)
-
-      Display quote body based on `data` any edits, sourcing, change to
-      method, etc. should apply to `data` and trigger `(inc :requests)`
-      and `(quotes/request-updated-end-dates)`"
-      [_ {:keys [latest requests]}]
-      (dom/p "quote"))))
