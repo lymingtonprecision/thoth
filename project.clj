@@ -25,7 +25,8 @@
                  [bidi "1.18.10"]
                  [com.andrewmcveigh/cljs-time "0.3.3"]
                  [com.cognitect/transit-cljs "0.8.207"]
-                 [cljsjs/hashids "1.0.2-0"]]
+                 [cljsjs/hashids "1.0.2-0"]
+                 [cljsjs/d3 "3.5.5-3"]]
 
   :plugins [[lein-environ "1.0.0"]
             [lein-cljsbuild "1.0.5"]]
