@@ -6,7 +6,8 @@
             [om-tools.core :refer-macros [defcomponentmethod]]
             [om-tools.dom :as dom :include-macros true]
             [thoth.routes :refer [defroute]]
-            [thoth.services.quotes :refer [request-updated-end-dates]]))
+            [thoth.services.quotes :refer [request-updated-end-dates]]
+            [thoth.components.quote.gantt :as gantt]))
 
 (defn set-latest-from-update [owner update]
   (let [data-key (if (= :ok (first update)) :latest :error)
@@ -43,6 +44,9 @@
       (when ou (close! ou))
       (om/set-state! owner :update nu)
       (go (if-let [r (<! nu)] (set-latest-from-update owner r)))))
+  (did-mount
+    [_]
+    (gantt/draw-gantt (om/get-node owner) ".gantt" data))
   (render-state
     #_"Display header with current best end date (from `data`),
       latest best end date based on changes (from `latest`),
@@ -54,8 +58,9 @@
       method, etc. should apply to `data` and so that the
       `will-receive-props` `fn` is called."
     [_ {:keys [latest update error]}]
-    (dom/div (dom/p (str "Viewing quote " (:id q)))
-             (dom/code (pr-str (:data q))))))
+    (dom/div
+      (dom/p (str "Viewing quote " (:id q)))
+      (dom/div {:class "gantt"}))))
 
 (defcomponentmethod quote-view :retrieving
   [q owner]
